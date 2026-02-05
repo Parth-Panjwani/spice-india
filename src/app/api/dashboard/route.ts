@@ -5,7 +5,7 @@ import Transaction from '@/models/Transaction';
 import Student from '@/models/Student';
 import { startOfMonth, endOfMonth, subMonths } from 'date-fns';
 
-export const revalidate = 60; // Cache for 60 seconds
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {

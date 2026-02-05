@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useRouter, useSearchParams } from 'next/navigation';
 import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+
 import { Download, Save, Upload, IndianRupee, RefreshCw, UserCircle, ArrowLeft } from 'lucide-react';
 import { addMonths, format } from 'date-fns';
 
@@ -21,6 +21,7 @@ export default function IDCardGenerator() {
     year: currentYear.toString(),
     photoUrl: '',
     startDate: new Date().toISOString().split('T')[0],
+    tenure: '3',
   });
   
   const [messFee, setMessFee] = useState(''); 
@@ -45,6 +46,7 @@ export default function IDCardGenerator() {
               year: data.year,
               photoUrl: data.photoUrl || '',
               startDate: data.startDate ? new Date(data.startDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+              tenure: data.tenure || '3',
             });
             
             // Fetch Latest Fee Info for this student
@@ -77,7 +79,7 @@ export default function IDCardGenerator() {
     if (searchParams.get('action') === 'download' && formData.fullName) {
         // slight delay to allow render
         setTimeout(() => {
-            handleDownloadPDF();
+            handleDownloadImage();
         }, 1000);
     }
   }, [searchParams, formData.fullName]);
@@ -100,7 +102,7 @@ export default function IDCardGenerator() {
     }
   };
 
-  const handleDownloadPDF = async () => {
+  const handleDownloadImage = async () => {
     if (!cardRef.current) {
        console.error("Card Ref is null");
        alert("Error: Card preview not found. Please try refreshing.");
@@ -108,36 +110,46 @@ export default function IDCardGenerator() {
     }
     
     try {
-      console.log("Starting PDF generation...");
+      console.log("Starting Image generation...");
       
       // Wait a moment for images to ensure they are rendered
       await new Promise(resolve => setTimeout(resolve, 500));
 
       const canvas = await html2canvas(cardRef.current, { 
-        scale: 4, 
+        scale: 4, // High Resolution
         useCORS: true, 
-        logging: true,
-        backgroundColor: '#ffffff',
-        allowTaint: false,
+        logging: false,
+        backgroundColor: null, // Transparent if needed
+        allowTaint: true,
+        onclone: (clonedDoc) => {
+           const body = clonedDoc.body;
+           body.style.backgroundColor = '#ffffff';
+           
+           // Ensure cleanly rendered styles
+           const clonedCard = clonedDoc.querySelector('[data-id-card="true"]');
+           if (clonedCard) {
+               // Ensure no external interference, although inline styles handle mostly everything
+           }
+        }
       });
 
       console.log("Canvas captured");
 
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL('image/png', 1.0);
       
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: [85.6, 54]
-      });
+      // Trigger Download Link
+      const link = document.createElement('a');
+      link.href = imgData;
+      link.download = `${formData.fullName.replace(/\s+/g, '_')}_ID.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
-      pdf.addImage(imgData, 'PNG', 0, 0, 85.6, 54);
-      pdf.save(`${formData.fullName.replace(/\s+/g, '_')}_ID.pdf`);
-      console.log("PDF Saved");
+      console.log("Image Saved");
 
     } catch (err: any) {
-      console.error('PDF Gen Error', err);
-      alert(`Failed to generate PDF: ${err.message || err}`);
+      console.error('Image Gen Error', err);
+      alert(`Failed to generate Image: ${err.message || err}`);
     }
   };
 
@@ -153,7 +165,7 @@ export default function IDCardGenerator() {
     setLoading(true);
 
     const startDateObj = new Date(formData.startDate);
-    const endDateObj = addMonths(startDateObj, 3); // Default 3 months membership
+    const endDateObj = addMonths(startDateObj, parseInt(formData.tenure));
 
     try {
       const url = editId ? `/api/students/${editId}` : '/api/students';
@@ -279,19 +291,34 @@ export default function IDCardGenerator() {
                 </div>
             </div>
 
-            {/* Date Selection */}
-            <div>
-               <label className="text-[10px] font-semibold uppercase text-muted-foreground mb-1 block">Start Date</label>
-               <input 
-                 type="date"
-                 className="flex h-8 w-full rounded-md border border-input px-2 text-sm"
-                 value={formData.startDate}
-                 onChange={(e) => setFormData({...formData, startDate: e.target.value})}
-                 required
-               />
-               <p className="text-[10px] text-orange-600 mt-1 font-medium">
-                 Valid until: {format(addMonths(new Date(formData.startDate), 3), 'dd MMM yyyy')}
-               </p>
+            <div className="grid grid-cols-2 gap-3">
+               <div>
+                  <label className="text-[10px] font-semibold uppercase text-muted-foreground mb-1 block">Start Date</label>
+                  <input 
+                    type="date"
+                    className="flex h-8 w-full rounded-md border border-input px-2 text-sm"
+                    value={formData.startDate}
+                    onChange={(e) => setFormData({...formData, startDate: e.target.value})}
+                    required
+                  />
+                  <p className="text-[10px] text-orange-600 mt-1 font-medium">
+                    Valid until: {format(addMonths(new Date(formData.startDate), parseInt(formData.tenure)), 'dd MMM yyyy')}
+                  </p>
+               </div>
+               <div>
+                   <label className="text-[10px] font-semibold uppercase text-muted-foreground mb-1 block">Tenure</label>
+                   <select 
+                      className="flex h-8 w-full rounded-md border border-input px-2 text-sm bg-white focus:ring-1 focus:ring-orange-500/20"
+                      value={formData.tenure}
+                      onChange={(e) => setFormData({...formData, tenure: e.target.value})}
+                   >
+                      <option value="1">1 Month</option>
+                      <option value="2">2 Months</option>
+                      <option value="3">3 Months</option>
+                      <option value="6">6 Months</option>
+                      <option value="12">1 Year</option>
+                   </select>
+               </div>
             </div>
 
             {/* Mess Fee Section - Compact & With Rubal */}
@@ -363,8 +390,8 @@ export default function IDCardGenerator() {
                  <Save className="mr-1.5 h-3.5 w-3.5" /> {editId ? 'Update' : 'Create Student'}
                </Button>
                {editId && (
-                   <Button type="button" variant="outline" onClick={handleDownloadPDF} className="flex-1 h-9 border-gray-300 text-sm">
-                     <Download className="mr-1.5 h-3.5 w-3.5" /> ID Card
+                   <Button type="button" variant="outline" onClick={handleDownloadImage} className="flex-1 h-9 border-gray-300 text-sm">
+                     <Download className="mr-1.5 h-3.5 w-3.5" /> Download Image
                    </Button>
                )}
             </div>
@@ -383,89 +410,135 @@ export default function IDCardGenerator() {
              {/* The ID Card DOM Element */}
               <div 
                 ref={cardRef} 
-                className="w-[85.6mm] h-[54mm] rounded-xl shadow-2xl overflow-hidden relative flex flex-col"
+                data-id-card="true"
+                className="overflow-hidden relative flex flex-col items-center"
                 style={{ 
-                  fontFamily: '"Inter", sans-serif',
+                  width: '54mm',
+                  height: '85.6mm',
+                  fontFamily: 'Arial, sans-serif',
                   backgroundColor: '#ffffff',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  letterSpacing: 'normal'
                 }}
               >
-                 {/* Header - Clean White with Orange Accent */}
-                 <div className="px-5 pt-4 pb-2 flex justify-between items-start">
-                    {/* Logo - Large and Free */}
-                    <div className="w-[35mm] h-[12mm] relative">
-                       <img 
-                         src="/SpiceIndia_Logo.png" 
-                         alt="SpiceIndia" 
-                         className="w-full h-full object-contain object-left"
-                         crossOrigin="anonymous"
-                       />
-                    </div>
-                    
-                    {/* Valid Date Tag */}
-                    <div 
-                      className="text-[9px] font-semibold px-2 py-1 rounded-full border"
-                      style={{ 
-                          backgroundColor: '#fff7ed', // orange-50
-                          color: '#ea580c', // orange-600
-                          borderColor: '#ffedd5' // orange-100
-                      }}
-                    >
-                      VALID: {format(addMonths(new Date(formData.startDate), 3), 'MMM yyyy').toUpperCase()}
-                    </div>
-                 </div>
-                 
-                 {/* Content - Spacious with Grid */}
-                 <div className="flex-1 px-6 pb-4 flex items-center gap-6">
-                    {/* Photo: Clean Circle or Rounded Square without heavy border */}
-                    <div className="relative">
-                       <div 
-                          className="h-[24mm] w-[24mm] rounded-lg overflow-hidden border shadow-sm flex items-center justify-center"
-                          style={{
-                              backgroundColor: '#f9fafb', // gray-50
-                              borderColor: '#e5e7eb' // gray-200
-                          }}
-                       >
-                           {formData.photoUrl ? (
-                             <img src={formData.photoUrl} alt="S" className="w-full h-full object-cover" crossOrigin="anonymous" />
-                           ) : (
-                             <UserCircle className="h-12 w-12" style={{ color: '#d1d5db' }} />
-                           )}
-                       </div>
-                       {/* Batch Badge */}
-                       <div 
-                          className="absolute -bottom-2 -right-2 text-[8px] font-bold px-1.5 py-0.5 rounded shadow-sm"
-                          style={{
-                              backgroundColor: '#111827', // gray-900
-                              color: '#ffffff'
-                          }}
-                       >
-                         {formData.year}
-                       </div>
-                    </div>
-                    
-                    {/* Details - Clean Typography */}
-                    <div className="flex-1 min-w-0">
-                       <div className="text-[14px] font-extrabold uppercase leading-tight truncate" style={{ color: '#111827' }}>
-                          {formData.fullName || 'STUDENT NAME'}
-                       </div>
-                       <div className="text-[10px] font-semibold uppercase tracking-wide mt-1 truncate" style={{ color: '#ea580c' }}>
-                          {formData.course || 'COURSE NAME'}
-                       </div>
-                       
-                       <div className="mt-3 flex flex-col gap-0.5">
-                         <div className="text-[8px] font-medium uppercase tracking-wider" style={{ color: '#9ca3af' }}>ID Number</div>
-                         <div className="text-[11px] font-mono font-bold tracking-tight" style={{ color: '#374151' }}>
-                            {formData.studentId || 'SI-XXXX-XXXX'}
+                 {/* Top Section Wrapper */}
+                 <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                     {/* Top Decorative Strip - Reduced height for safety buffer */}
+                     <div 
+                        style={{
+                            width: '100%',
+                            height: '20mm', // Reduced to 20mm
+                            background: 'linear-gradient(to bottom, #f97316, #dc2626)',
+                            borderRadius: '0 0 50% 50% / 0 0 12mm 12mm',
+                            position: 'relative',
+                            marginBottom: '6mm' // Tighter spacing
+                        }}
+                     ></div>
+
+                     {/* Photo Container Wrapper */}
+                     <div style={{ position: 'relative', marginTop: '-14mm', alignSelf: 'center', width: '22mm', height: '22mm', zIndex: 10 }}>
+                         {/* Actual Photo Circle */}
+                         <div 
+                            style={{
+                                width: '100%',
+                                height: '100%',
+                                borderRadius: '50%',
+                                border: '3px solid #ffffff',
+                                backgroundColor: '#f3f4f6',
+                                overflow: 'hidden',
+                                position: 'relative',
+                                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                            }}
+                         >
+                            {formData.photoUrl ? (
+                               <img src={formData.photoUrl} alt="S" style={{ width: '100%', height: '100%', objectFit: 'cover' }} crossOrigin="anonymous" />
+                            ) : (
+                               <UserCircle style={{ height: '100%', width: '100%', color: '#9ca3af', padding: '2px' }} />
+                            )}
                          </div>
-                       </div>
+                        
+                         {/* Year Badge */}
+                         <div 
+                            style={{
+                                position: 'absolute',
+                                bottom: '9px', 
+                                width: '100%',
+                                display: 'flex',
+                                justifyContent: 'center'
+                            }}
+                         >
+                            <span
+                                style={{
+                                    fontSize: '9px',
+                                    fontWeight: '900',
+                                    height: '16px', 
+                                    lineHeight: '16px', // Reliable centering
+                                    padding: '0 10px',
+                                    backgroundColor: '#111827',
+                                    color: '#ffffff',
+                                    borderRadius: '6px',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                                    border: '1px solid #ffffff',
+                                    display: 'inline-block', // Inline block for width/height respect
+                                    textAlign: 'center',
+                                    whiteSpace: 'nowrap'
+                                }}
+                            >
+                               {formData.year}
+                            </span>
+                         </div>
+                     </div>
+                 </div>
+
+                 {/* Typography Section - Centered Content */}
+                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', padding: '0 4mm' }}>
+                    
+                    {/* Logo - Fixed aspect ratio safer for PDF */}
+                    <div style={{ width: '24mm', height: '8mm', marginBottom: '1mm', display: 'flex', justifyContent: 'center' }}>
+                         <img 
+                           src="/SpiceIndia_Logo.png" 
+                           alt="SpiceIndia" 
+                           style={{ height: '100%', width: 'auto', maxWidth: '100%', objectFit: 'contain' }} 
+                           crossOrigin="anonymous"
+                         />
+                    </div>
+
+                    <div style={{ fontSize: '14px', fontWeight: '900', textTransform: 'uppercase', color: '#111827', lineHeight: '1.2', textAlign: 'center', marginBottom: '1px' }}>
+                        {formData.fullName || 'STUDENT NAME'}
+                    </div>
+                    <div style={{ fontSize: '9px', fontWeight: 'bold', textTransform: 'uppercase', color: '#ea580c', letterSpacing: '0.5px', textAlign: 'center' }}>
+                        {formData.course || 'COURSE NAME'}
+                    </div>
+
+                    {/* Divider - Minimal */}
+                    <div style={{ width: '16px', height: '2px', backgroundColor: '#e5e7eb', margin: '2mm auto 2mm' }}></div>
+
+                    {/* Footer Details - Robust Vertical Fit */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1mm', alignItems: 'center' }}>
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '6px', fontWeight: 'bold', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '1px' }}>ID Number</div>
+                            <div style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', color: '#374151', lineHeight: '1.2' }}>
+                                {formData.studentId || 'SI-XXXX'}
+                            </div>
+                        </div>
+
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '6px', fontWeight: 'bold', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '1px' }}>Valid Until</div>
+                            <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#111827', lineHeight: '1.2' }}>
+                                {format(addMonths(new Date(formData.startDate), 3), 'MMM yyyy').toUpperCase()}
+                            </div>
+                        </div>
                     </div>
                  </div>
 
-                 {/* Footer - Minimalist Gradient */}
+                 {/* Bottom Strip */}
                  <div 
-                    className="h-1.5 w-full" 
-                    style={{ background: 'linear-gradient(to right, #f97316, #dc2626)' }}
+                    style={{ 
+                        width: '100%', 
+                        height: '5mm', 
+                        background: '#ea580c',
+                        marginTop: 'auto'
+                    }}
                  ></div>
               </div>
          </div>
