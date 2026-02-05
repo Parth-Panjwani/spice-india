@@ -64,9 +64,28 @@ export default function DashboardClient() {
   };
 
   if (loading) {
-    return <div className="p-8 flex items-center justify-center min-h-[50vh]">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
-    </div>;
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="flex justify-between items-center">
+          <div>
+            <div className="h-8 w-32 bg-gray-200 rounded-lg mb-2"></div>
+            <div className="h-4 w-48 bg-gray-100 rounded"></div>
+          </div>
+          <div className="h-10 w-24 bg-gray-200 rounded-lg"></div>
+        </div>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-24 bg-gray-100 rounded-xl border border-gray-200"></div>
+          ))}
+        </div>
+        
+        <div className="grid gap-4 md:grid-cols-7">
+          <div className="col-span-4 h-80 bg-gray-100 rounded-xl border border-gray-200"></div>
+          <div className="col-span-3 h-80 bg-gray-100 rounded-xl border border-gray-200"></div>
+        </div>
+      </div>
+    );
   }
 
   if (!data) return <div className="p-8 text-center text-red-500">Failed to load dashboard data.</div>;
