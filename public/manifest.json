@@ -1,0 +1,16 @@
+{
+  "name": "SpiceIndia Manager",
+  "short_name": "SpiceIndia",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ea580c",
+  "icons": [
+    {
+      "src": "/SpiceIndia_Logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
+    }
+  ],
+  "orientation": "portrait"
+}
