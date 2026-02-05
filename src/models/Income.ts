@@ -2,6 +2,8 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IIncome extends Document {
   amount: number;
+  rubalAmount?: number;
+  rubalRate?: number;
   date: Date;
   source: string; // e.g., 'Student Fee'
   description: string; // e.g., 'Mess Fee (Jan-Mar)'
