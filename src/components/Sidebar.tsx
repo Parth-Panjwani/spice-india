@@ -3,14 +3,17 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Wallet, GraduationCap, IndianRupee } from 'lucide-react';
+import { LayoutDashboard, Wallet, GraduationCap, IndianRupee, Send, Package, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Expenses & Ledger', href: '/expenses', icon: Wallet },
-  { name: 'Student IDs', href: '/students', icon: GraduationCap },
-  { name: 'Income', href: '/income', icon: IndianRupee },
+  { name: 'Meal Contracts', href: '/students', icon: GraduationCap },
+  { name: 'Income Logs', href: '/income', icon: IndianRupee },
+  { name: 'Remittances', href: '/remittances', icon: Send },
+  { name: 'Inventory & Kitchen', href: '/inventory', icon: Package },
+  { name: 'Staff Wages', href: '/staff', icon: Users },
+  { name: 'Basic Expenses', href: '/expenses', icon: Wallet },
 ];
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {

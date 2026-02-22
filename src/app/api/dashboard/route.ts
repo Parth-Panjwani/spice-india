@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Income from '@/models/Income';
-import Transaction from '@/models/Transaction';
-import Student from '@/models/Student';
-import { startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import Remittance from '@/models/Remittance';
+import { InventoryPurchase, InventoryItem, InventoryConsumption } from '@/models/Inventory';
+import StaffLedger from '@/models/StaffLedger';
+import MealContract from '@/models/MealContract';
+import { subMonths, startOfMonth } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,97 +13,95 @@ export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
 
-    // Run all independent queries in parallel for speed
+    // Fire all aggregations in parallel
     const [
-      incomeResult,
-      expenseResult,
-      activeStudentsCount,
-      monthlyIncomeData,
-      monthlyExpenseData,
-      recentIncome,
-      recentExpenses
+      incomeRes,
+      remittanceRes,
+      purchaseRes,
+      staffRes,
+      activeContractCount,
+      inventoryItems,
+      recentRemittances,
+      recentPurchases,
+      recentConsumptions
     ] = await Promise.all([
-      // 1. Total Income
-      Income.aggregate([
-        { $group: { _id: null, total: { $sum: '$amount' }, totalRubal: { $sum: '$rubalAmount' } } }
+      Income.aggregate([{ $group: { _id: null, totalINR: { $sum: '$amount' } } }]),
+      Remittance.aggregate([
+          { $match: { status: 'confirmed' } },
+          { $group: { _id: null, totalINR: { $sum: '$amountINR' }, totalRUB: { $sum: '$amountRUB' } } }
       ]),
-      
-      // 2. Total Expenses
-      Transaction.aggregate([
-        { $group: { _id: null, total: { $sum: '$amount' }, totalRubal: { $sum: '$rubalAmount' } } }
-      ]),
-      
-      // 3. Active Students Count
-      Student.countDocuments({ status: 'active' }),
-      
-      // 4. Monthly Income (last 6 months in one query)
-      Income.aggregate([
-        { $match: { date: { $gte: subMonths(startOfMonth(new Date()), 5) } } },
-        { $group: { 
-          _id: { $dateToString: { format: '%Y-%m', date: '$date' } },
-          total: { $sum: '$amount' }
-        }},
-        { $sort: { _id: 1 } }
-      ]),
-      
-      // 5. Monthly Expenses (last 6 months in one query)
-      Transaction.aggregate([
-        { $match: { date: { $gte: subMonths(startOfMonth(new Date()), 5) } } },
-        { $group: { 
-          _id: { $dateToString: { format: '%Y-%m', date: '$date' } },
-          total: { $sum: '$amount' }
-        }},
-        { $sort: { _id: 1 } }
-      ]),
-      
-      // 6. Recent Income (limit 5)
-      Income.find().sort({ date: -1 }).limit(5).select('amount date description').lean(),
-      
-      // 7. Recent Expenses (limit 5)
-      Transaction.find().sort({ date: -1 }).limit(5).select('amount date description subType').lean()
+      InventoryPurchase.aggregate([{ $group: { _id: null, totalRUB: { $sum: '$priceRUB' } } }]),
+      StaffLedger.aggregate([{ $group: { _id: null, totalPaidRUB: { $sum: '$salaryPaidRUB' }, totalPendingRUB: { $sum: { $subtract: ['$monthlySalaryRUB', { $add: ['$salaryPaidRUB', '$advancesRUB'] }] } } } }]),
+      MealContract.countDocuments({ status: 'active', endDate: { $gte: new Date() } }),
+      InventoryItem.find({}).lean(),
+      Remittance.find().sort({ date: -1 }).limit(5).lean(),
+      InventoryPurchase.find().populate('itemRef', 'name').sort({ date: -1 }).limit(5).lean(),
+      InventoryConsumption.find().populate('itemRef', 'name').sort({ date: -1 }).limit(5).lean()
     ]);
 
-    const totalIncome = incomeResult[0]?.total || 0;
-    const totalRubalIncome = incomeResult[0]?.totalRubal || 0;
-    const totalExpenses = expenseResult[0]?.total || 0;
-    const totalRubalExpenses = expenseResult[0]?.totalRubal || 0;
+    const kpis = {
+      totalIncomeINR: incomeRes[0]?.totalINR || 0,
+      totalRemittanceSentINR: remittanceRes[0]?.totalINR || 0,
+      totalRemittanceRecvRUB: remittanceRes[0]?.totalRUB || 0,
+      totalGroceryPurchasesRUB: purchaseRes[0]?.totalRUB || 0,
+      totalSalaryPaidRUB: staffRes[0]?.totalPaidRUB || 0,
+      totalSalaryPendingRUB: staffRes[0]?.totalPendingRUB || 0,
+      activeMealStudents: activeContractCount
+    };
 
-    // Build monthly data from aggregated results
-    const incomeMap = new Map(monthlyIncomeData.map((d: any) => [d._id, d.total]));
-    const expenseMap = new Map(monthlyExpenseData.map((d: any) => [d._id, d.total]));
+    // Calculate Intelligence Metrics
+    // Over-simplified Current Value: estimate based on arbitrary rule here, or we can just say "Low Stock Items" count
+    const lowStockItems = inventoryItems.filter(i => i.currentStock < i.minimumThreshold);
     
-    const monthlyData = [];
-    for (let i = 5; i >= 0; i--) {
-      const date = subMonths(new Date(), i);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const monthLabel = date.toLocaleString('default', { month: 'short' });
-      
-      monthlyData.push({
-        name: monthLabel,
-        income: incomeMap.get(key) || 0,
-        expenses: expenseMap.get(key) || 0
-      });
+    // Remittance vs Purchase Gap (Unspent Groceries Money in Russia from Remittances)
+    // Assume a portion of remittance is for salary, so we only count purpose = "Groceries"
+    const groceryRemittances = await Remittance.aggregate([
+        { $match: { status: 'confirmed', purpose: 'Groceries' } },
+        { $group: { _id: null, totalRUB: { $sum: '$amountRUB' } } }
+    ]);
+    const groceryRemittedRUB = groceryRemittances[0]?.totalRUB || 0;
+    const procurementGapRUB = groceryRemittedRUB - kpis.totalGroceryPurchasesRUB;
+
+    // Cost Per Student Per Day (Rolling 30 days)
+    const thirtyDaysAgo = subMonths(new Date(), 1);
+    const recentPurchasesForCost = await InventoryPurchase.aggregate([
+        { $match: { date: { $gte: thirtyDaysAgo } } },
+        { $group: { _id: null, totalRUB: { $sum: '$priceRUB' } } }
+    ]);
+    const thirtyDayCost = recentPurchasesForCost[0]?.totalRUB || 0;
+    const costPerStudentPerDay = activeContractCount > 0 ? (thirtyDayCost / 30 / activeContractCount) : 0;
+
+    // Compile Recent Activity Log
+    const activity = [
+        ...recentRemittances.map(r => ({ type: 'remittance', date: r.date, title: `Sent INR ${r.amountINR} (${r.purpose})` })),
+        ...recentPurchases.map((p: any) => ({ type: 'purchase', date: p.date, title: `Bought ${p.itemRef?.name} for ${p.priceRUB} RUB` })),
+        ...recentConsumptions.map((c: any) => ({ type: 'consumption', date: c.date, title: `Used ${c.quantityUsed} of ${c.itemRef?.name}` }))
+    ].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8);
+
+    // Formulate Alerts
+    const alerts = [];
+    if (lowStockItems.length > 0) {
+        alerts.push({ type: 'danger', message: `${lowStockItems.length} items are below minimum stock thresholds.` });
+    }
+    if (procurementGapRUB > 50000) { // arbitrary threshold
+        alerts.push({ type: 'warning', message: `High unspent grocery cash: ${procurementGapRUB} RUB remains un-invoiced.` });
+    }
+    if (procurementGapRUB < 0) {
+        alerts.push({ type: 'danger', message: `Fraud alert: Recorded purchases exceed sent remittances by ${Math.abs(procurementGapRUB)} RUB.` });
+    }
+    if (costPerStudentPerDay > 400) { // e.g., > 400 RUB per day per person is high
+        alerts.push({ type: 'warning', message: `High cost anomaly: ${costPerStudentPerDay.toFixed(0)} RUB per student per day over last 30 days.` });
     }
 
-    // Combine recent activity
-    const activity = [
-      ...recentIncome.map((i: any) => ({ type: 'income', ...i, title: i.description || 'Income' })),
-      ...recentExpenses.map((e: any) => ({ type: 'expense', ...e, title: e.description || e.subType || 'Expense' }))
-    ].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
-
     return NextResponse.json({
-      totalIncome,
-      totalRubalIncome,
-      totalExpenses,
-      totalRubalExpenses,
-      netBalance: totalIncome - totalExpenses,
-      activeStudentsCount,
-      monthlyData,
+      kpis,
+      metrics: {
+          procurementGapRUB,
+          costPerStudentPerDay: costPerStudentPerDay.toFixed(0),
+          lowStockCount: lowStockItems.length
+      },
+      alerts,
       recentActivity: activity
-    }, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300'
-      }
     });
 
   } catch (error) {

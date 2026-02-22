@@ -34,6 +34,7 @@ export default function StudentManager({ initialStudents }: { initialStudents: a
   const [renewalFee, setRenewalFee] = useState('');
   const [rubalRate, setRubalRate] = useState('0.92');
   const [renewalMonths, setRenewalMonths] = useState(3);
+  const [renewalMealType, setRenewalMealType] = useState('both');
   const router = useRouter();
 
   const filteredStudents = students.filter(s => {
@@ -105,17 +106,22 @@ export default function StudentManager({ initialStudents }: { initialStudents: a
        });
 
        if (sRes.ok) {
-          // 2. Record Income
+          // 2. Record New Meal Contract
           if (renewalFee && parseFloat(renewalFee) > 0) {
-            await fetch('/api/income', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                amount: parseFloat(renewalFee),
-                studentId: renewingStudent._id,
-                description: `Membership Renewal (${format(baseDate, 'MMM yyyy')} - ${format(newEndDate, 'MMM yyyy')})`
-              })
-            });
+             const contractPayload = {
+               studentId: renewingStudent._id,
+               mealType: renewalMealType,
+               durationMonths: renewalMonths,
+               startDate: baseDate.toISOString(),
+               amountINR: parseFloat(renewalFee),
+               rubalRate: rubalRate ? parseFloat(rubalRate) : 0.92,
+             };
+             
+             await fetch('/api/meal-contracts', {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify(contractPayload)
+             });
           }
 
           // Update Local State
@@ -294,21 +300,35 @@ export default function StudentManager({ initialStudents }: { initialStudents: a
           </DialogHeader>
 
           <form onSubmit={handleRenewal} className="space-y-4 py-2">
-             <div className="grid gap-2">
-                <Label>Renewal Period</Label>
-                <div className="flex gap-2">
-                   {[1, 3, 6, 12].map(m => (
-                      <Button 
-                        key={m} 
-                        type="button" 
-                        variant={renewalMonths === m ? 'default' : 'outline'}
-                        onClick={() => setRenewalMonths(m)}
-                        className="flex-1"
-                      >
-                        {m} Months
-                      </Button>
-                   ))}
-                </div>
+             <div className="grid grid-cols-2 gap-4">
+                 <div className="grid gap-2">
+                    <Label>Renewal Period</Label>
+                    <div className="flex gap-2">
+                       {[1, 3, 6, 12].map(m => (
+                          <Button 
+                            key={m} 
+                            type="button" 
+                            variant={renewalMonths === m ? 'default' : 'outline'}
+                            onClick={() => setRenewalMonths(m)}
+                            className="flex-1 px-1 h-8 text-xs"
+                          >
+                            {m}M
+                          </Button>
+                       ))}
+                    </div>
+                 </div>
+                 <div className="grid gap-2">
+                    <Label>Meal Type</Label>
+                    <select 
+                       className="flex h-8 w-full rounded-md border border-input px-2 text-sm bg-white focus:ring-1 focus:ring-orange-500/20"
+                       value={renewalMealType}
+                       onChange={(e) => setRenewalMealType(e.target.value)}
+                    >
+                       <option value="lunch">Lunch Only</option>
+                       <option value="dinner">Dinner Only</option>
+                       <option value="both">Lunch + Dinner</option>
+                    </select>
+                 </div>
              </div>
 
              <div className="grid grid-cols-2 gap-4">

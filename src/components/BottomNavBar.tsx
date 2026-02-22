@@ -2,14 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Wallet, GraduationCap, IndianRupee } from 'lucide-react';
+import { LayoutDashboard, Wallet, GraduationCap, Package, Send, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const tabs = [
   { name: 'Home', href: '/', icon: LayoutDashboard },
-  { name: 'Expenses', href: '/expenses', icon: Wallet },
-  { name: 'Students', href: '/students', icon: GraduationCap },
-  { name: 'Income', href: '/income', icon: IndianRupee },
+  { name: 'Contracts', href: '/students', icon: GraduationCap },
+  { name: 'Remit', href: '/remittances', icon: Send },
+  { name: 'Kitchen', href: '/inventory', icon: Package },
+  { name: 'Staff', href: '/staff', icon: Users },
 ];
 
 export function BottomNavBar() {

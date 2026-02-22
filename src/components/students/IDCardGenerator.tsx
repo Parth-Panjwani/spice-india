@@ -22,6 +22,7 @@ export default function IDCardGenerator() {
     photoUrl: '',
     startDate: new Date().toISOString().split('T')[0],
     tenure: '3',
+    mealType: 'both',
   });
   
   const [messFee, setMessFee] = useState(''); 
@@ -47,6 +48,7 @@ export default function IDCardGenerator() {
               photoUrl: data.photoUrl || '',
               startDate: data.startDate ? new Date(data.startDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
               tenure: data.tenure || '3',
+              mealType: data.mealType || 'both',
             });
             
             // Fetch Latest Fee Info for this student
@@ -185,24 +187,22 @@ export default function IDCardGenerator() {
       if (res.ok) {
         const student = await res.json();
         
-        // 2. Save Income (Mess Fee) - ONLY on NEW Creation, NOT on Edit
+        // 2. Save Meal Contract - ONLY on NEW Creation, NOT on Edit
+        // The API /api/meal-contracts auto-logs the Income.
         if (!editId && messFee && parseFloat(messFee) > 0) {
-             // Debug logging
-             console.log('Creating income with:', { messFee, rubalRate, calculatedRubal: rubalRate ? parseFloat(messFee) * parseFloat(rubalRate) : 'none' });
-             
-             const incomePayload = {
-               amount: parseFloat(messFee),
-               rubalAmount: rubalRate && parseFloat(rubalRate) > 0 ? parseFloat(messFee) * parseFloat(rubalRate) : undefined,
-               rubalRate: rubalRate && parseFloat(rubalRate) > 0 ? parseFloat(rubalRate) : undefined,
+             const contractPayload = {
                studentId: student._id,
-               description: `Membership Fee (${format(startDateObj, 'MMM yyyy')} - ${format(endDateObj, 'MMM yyyy')})`
+               mealType: formData.mealType,
+               durationMonths: parseInt(formData.tenure),
+               startDate: startDateObj.toISOString(),
+               amountINR: parseFloat(messFee),
+               rubalRate: rubalRate && parseFloat(rubalRate) > 0 ? parseFloat(rubalRate) : 0.92,
              };
-             console.log('Income payload:', incomePayload);
              
-             await fetch('/api/income', {
+             await fetch('/api/meal-contracts', {
                method: 'POST',
                headers: { 'Content-Type': 'application/json' },
-               body: JSON.stringify(incomePayload)
+               body: JSON.stringify(contractPayload)
              });
         }
 
@@ -291,21 +291,22 @@ export default function IDCardGenerator() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-               <div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+               <div className="sm:col-span-1">
                   <label className="text-[10px] font-semibold uppercase text-muted-foreground mb-1 block">Start Date</label>
                   <input 
                     type="date"
-                    className="flex h-8 w-full rounded-md border border-input px-2 text-sm"
+                    className="flex h-8 w-full rounded-md border border-input px-2 text-sm focus:ring-1 focus:ring-orange-500/20"
                     value={formData.startDate}
                     onChange={(e) => setFormData({...formData, startDate: e.target.value})}
                     required
                   />
-                  <p className="text-[10px] text-orange-600 mt-1 font-medium">
-                    Valid until: {format(addMonths(new Date(formData.startDate), parseInt(formData.tenure)), 'dd MMM yyyy')}
+                  <p className="text-[10px] text-orange-600 mt-1 font-medium whitespace-nowrap overflow-hidden text-ellipsis">
+                    Valid till: {format(addMonths(new Date(formData.startDate), parseInt(formData.tenure)), 'dd MMM yyyy')}
                   </p>
                </div>
-               <div>
+
+               <div className="sm:col-span-1">
                    <label className="text-[10px] font-semibold uppercase text-muted-foreground mb-1 block">Tenure</label>
                    <select 
                       className="flex h-8 w-full rounded-md border border-input px-2 text-sm bg-white focus:ring-1 focus:ring-orange-500/20"
@@ -319,13 +320,26 @@ export default function IDCardGenerator() {
                       <option value="12">1 Year</option>
                    </select>
                </div>
+
+               <div className="sm:col-span-1">
+                   <label className="text-[10px] font-semibold uppercase text-muted-foreground mb-1 block">Meal Type</label>
+                   <select 
+                      className="flex h-8 w-full rounded-md border border-input px-2 text-sm bg-white focus:ring-1 focus:ring-orange-500/20"
+                      value={formData.mealType}
+                      onChange={(e) => setFormData({...formData, mealType: e.target.value})}
+                   >
+                      <option value="lunch">Lunch Only</option>
+                      <option value="dinner">Dinner Only</option>
+                      <option value="both">Lunch + Dinner</option>
+                   </select>
+               </div>
             </div>
 
             {/* Mess Fee Section - Compact & With Rubal */}
             <div className="bg-orange-50/50 p-3 rounded-md border border-orange-100">
                <label className="text-xs font-bold text-orange-900 mb-2 flex items-center justify-between">
-                 <span className="flex items-center gap-1"><IndianRupee className="h-3 w-3" /> Fee (Mandatory)</span>
-                 <span className="text-[10px] bg-orange-100 px-1.5 py-0.5 rounded text-orange-700">Membership Fee</span>
+                 <span className="flex items-center gap-1"><IndianRupee className="h-3 w-3" /> Contract Value (INR)</span>
+                 <span className="text-[10px] bg-orange-100 px-1.5 py-0.5 rounded text-orange-700">Meal Contract Total</span>
                </label>
                
                <div className="grid grid-cols-2 gap-2">

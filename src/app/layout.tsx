@@ -43,8 +43,8 @@ export default function RootLayout({
           </div>
 
           {/* Main Content - Add bottom padding on mobile for nav bar */}
-          <main className="flex-1 min-h-screen pb-20 md:pb-0">
-            <div className="p-4 md:p-8 max-w-7xl mx-auto">
+          <main className="flex-1 min-w-0 flex flex-col min-h-screen pb-20 md:pb-0">
+            <div className="w-full p-4 md:p-8 max-w-7xl mx-auto">
               {children}
             </div>
           </main>
