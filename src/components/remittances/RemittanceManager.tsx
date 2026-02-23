@@ -1,20 +1,32 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Upload, Download, Eye, FileText, CheckCircle } from 'lucide-react';
-import { format } from 'date-fns';
+import { Plus, Upload, Download, Eye, FileText, CheckCircle, Edit, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
+import { useAuth } from '@/contexts/AuthContext';
 
-export default function RemittanceManager({ initialRemittances }: { initialRemittances: any[] }) {
+export default function RemittanceManager({ initialRemittances, initialRequests = [] }: { initialRemittances: any[], initialRequests?: any[] }) {
+  const { role } = useAuth();
   const [remittances, setRemittances] = useState(initialRemittances);
+  const [requests, setRequests] = useState(initialRequests);
+
+  useEffect(() => {
+    setRemittances(initialRemittances);
+    setRequests(initialRequests);
+  }, [initialRemittances, initialRequests]);
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const router = useRouter();
 
-  const [formData, setFormData] = useState({
+  const defaultForm = {
     amountINR: '',
     rubalRate: '',
     sentTo: '',
@@ -22,7 +34,54 @@ export default function RemittanceManager({ initialRemittances }: { initialRemit
     notes: '',
     proofImageUrl: '',
     date: new Date().toISOString().split('T')[0]
-  });
+  };
+
+  const [formData, setFormData] = useState(defaultForm);
+
+  const defaultRequestForm = {
+    amountRUB: '',
+    purpose: '',
+    notes: '',
+  };
+  const [requestForm, setRequestForm] = useState(defaultRequestForm);
+
+  const openNewModal = () => {
+      setEditingId(null);
+      setFormData(defaultForm);
+      setIsModalOpen(true);
+  };
+
+  const openNewRequestModal = () => {
+      setRequestForm(defaultRequestForm);
+      setIsRequestModalOpen(true);
+  };
+
+  const openEditModal = (rem: any) => {
+      setEditingId(rem._id);
+      setFormData({
+          amountINR: rem.amountINR.toString(),
+          rubalRate: rem.rubalRate.toString(),
+          sentTo: rem.sentTo,
+          purpose: rem.purpose,
+          notes: rem.notes || '',
+          proofImageUrl: rem.proofImageUrl,
+          date: rem.date ? new Date(rem.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+      });
+      setIsModalOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+      if(!confirm("Are you sure you want to delete this money transfer? This cannot be undone.")) return;
+      try {
+          const res = await fetch(`/api/remittances/${id}`, { method: 'DELETE' });
+          if(res.ok) {
+              setRemittances(remittances.filter(r => r._id !== id));
+              router.refresh();
+          }
+      } catch (err) {
+          console.error(err);
+      }
+  };
 
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
@@ -46,27 +105,36 @@ export default function RemittanceManager({ initialRemittances }: { initialRemit
 
     setLoading(true);
     try {
-      const res = await fetch('/api/remittances', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const payload = {
            amountINR: Number(formData.amountINR),
            rubalRate: Number(formData.rubalRate),
+           amountRUB: Number(formData.amountINR) * Number(formData.rubalRate),
            sentTo: formData.sentTo,
            purpose: formData.purpose,
            date: new Date(formData.date).toISOString(),
            proofImageUrl: formData.proofImageUrl,
            notes: formData.notes
-        })
+      };
+
+      const url = editingId ? `/api/remittances/${editingId}` : '/api/remittances';
+      const method = editingId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
 
       if (res.ok) {
-        const newRemittance = await res.json();
-        setRemittances([newRemittance, ...remittances]);
+        const savedRemittance = await res.json();
+        if (editingId) {
+            setRemittances(remittances.map(r => r._id === editingId ? savedRemittance : r));
+        } else {
+            setRemittances([savedRemittance, ...remittances]);
+        }
         setIsModalOpen(false);
-        setFormData({
-            amountINR: '', rubalRate: '', sentTo: '', purpose: 'Groceries', notes: '', proofImageUrl: '', date: new Date().toISOString().split('T')[0]
-        });
+        setFormData(defaultForm);
+        setEditingId(null);
         router.refresh();
       } else {
         alert("Failed to save remittance.");
@@ -95,9 +163,53 @@ export default function RemittanceManager({ initialRemittances }: { initialRemit
       }
   };
 
+  const submitFundRequest = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setLoading(true);
+      try {
+         const res = await fetch('/api/fund-requests', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({
+                 amountRUB: Number(requestForm.amountRUB),
+                 purpose: requestForm.purpose,
+                 notes: requestForm.notes,
+                 requestedBy: 'manager' // This could be dynamically fetched based on logged in user later
+             })
+         });
+         if(res.ok) {
+            setIsRequestModalOpen(false);
+            setRequestForm(defaultRequestForm);
+            router.refresh();
+         }
+      } finally { setLoading(false); }
+  };
+
+  const updateRequestStatus = async (id: string, status: string) => {
+      setLoading(true);
+      try {
+         const res = await fetch(`/api/fund-requests/${id}`, {
+             method: 'PUT',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ status })
+         });
+         if(res.ok) router.refresh();
+      } finally { setLoading(false); }
+  };
+
   return (
-    <div>
-       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
+    <div className="space-y-6">
+       <Tabs defaultValue={role === 'manager' ? 'requests' : 'sent'} className="space-y-4">
+          <TabsList className={`w-full flex justify-start bg-white border rounded-lg h-auto p-1 gap-1 whitespace-nowrap overflow-x-auto ${role === 'manager' ? 'hidden' : ''}`}>
+             {role === 'admin' && (
+               <TabsTrigger value="sent" className="rounded-md data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 text-xs sm:text-sm flex-shrink-0">Sent Transfers</TabsTrigger>
+             )}
+             <TabsTrigger value="requests" className="rounded-md data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 text-xs sm:text-sm flex-shrink-0">Fund Requests</TabsTrigger>
+          </TabsList>
+
+          {role === 'admin' && (
+            <TabsContent value="sent">
+             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
            <div className="grid grid-cols-2 sm:flex sm:gap-4 gap-2 w-full sm:w-auto">
               <Card className="px-3 py-2 bg-white shadow-sm border-gray-100 flex items-center gap-2">
                  <div className="bg-orange-100 p-2 rounded-full text-orange-600 flex-shrink-0"><Download className="h-4 w-4" /></div>
@@ -115,9 +227,11 @@ export default function RemittanceManager({ initialRemittances }: { initialRemit
               </Card>
            </div>
            
-           <Button className="bg-orange-600 hover:bg-orange-700 w-full sm:w-auto" onClick={() => setIsModalOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" /> New Remittance
-           </Button>
+           {role === 'admin' && (
+             <Button className="bg-orange-600 hover:bg-orange-700 w-full sm:w-auto" onClick={openNewModal}>
+                <Plus className="mr-2 h-4 w-4" /> New Transfer
+             </Button>
+           )}
        </div>
 
        <Card className="shadow-sm border-0 ring-1 ring-black/5">
@@ -155,12 +269,27 @@ export default function RemittanceManager({ initialRemittances }: { initialRemit
                                                 <CheckCircle className="h-3 w-3" /> Confirmed
                                              </span>
                                          ) : (
-                                            <Button variant="outline" size="sm" className="h-6 text-[10px]" onClick={() => markConfirmed(rem._id)}>Mark Confirm</Button>
+                                             role === 'admin' ? (
+                                                <Button variant="outline" size="sm" className="h-6 text-[10px]" onClick={() => markConfirmed(rem._id)}>Mark Confirm</Button>
+                                             ) : (
+                                                <span className="text-xs font-medium text-orange-600">Pending</span>
+                                             )
                                          )}
                                          
                                          <Button variant="ghost" size="icon" className="h-6 w-6 text-gray-400 hover:text-orange-600" onClick={() => setPreviewImage(rem.proofImageUrl)}>
                                              <Eye className="h-3.5 w-3.5" />
                                          </Button>
+
+                                         {role === 'admin' && (
+                                           <>
+                                             <Button variant="ghost" size="icon" className="h-6 w-6 text-gray-400 hover:text-blue-600" onClick={() => openEditModal(rem)}>
+                                                 <Edit className="h-3.5 w-3.5" />
+                                             </Button>
+                                             <Button variant="ghost" size="icon" className="h-6 w-6 text-gray-400 hover:text-red-600" onClick={() => handleDelete(rem._id)}>
+                                                 <Trash2 className="h-3.5 w-3.5" />
+                                             </Button>
+                                           </>
+                                         )}
                                      </div>
                                  </td>
                              </tr>
@@ -168,7 +297,7 @@ export default function RemittanceManager({ initialRemittances }: { initialRemit
                          {remittances.length === 0 && (
                              <tr>
                                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground bg-white">
-                                     No remittances logged yet.
+                                     No money transfers logged yet.
                                  </td>
                              </tr>
                          )}
@@ -198,29 +327,92 @@ export default function RemittanceManager({ initialRemittances }: { initialRemit
                                        <CheckCircle className="h-3 w-3" /> Confirmed
                                     </span>
                                 ) : (
-                                   <Button variant="outline" size="sm" className="h-7 text-[10px] font-bold uppercase tracking-wide border-orange-200 text-orange-700 bg-orange-50 hover:bg-orange-100" onClick={() => markConfirmed(rem._id)}>Approve</Button>
+                                    role === 'admin' ? (
+                                       <Button variant="outline" size="sm" className="h-7 text-[10px] font-bold uppercase tracking-wide border-orange-200 text-orange-700 bg-orange-50 hover:bg-orange-100" onClick={() => markConfirmed(rem._id)}>Approve</Button>
+                                    ) : (
+                                       <span className="text-[10px] font-bold text-orange-600 uppercase">Pending</span>
+                                    )
                                 )}
                              </div>
-                             <Button variant="ghost" size="sm" className="h-8 text-xs text-gray-600 flex items-center gap-1 hover:bg-gray-100 font-semibold" onClick={() => setPreviewImage(rem.proofImageUrl)}>
-                                 <Eye className="h-4 w-4" /> Proof
-                             </Button>
+                             <div className="flex items-center gap-1">
+                                 {role === 'admin' && (
+                                   <>
+                                     <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-blue-600 bg-gray-50" onClick={() => openEditModal(rem)}>
+                                         <Edit className="h-3.5 w-3.5" />
+                                     </Button>
+                                     <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-red-600 bg-gray-50" onClick={() => handleDelete(rem._id)}>
+                                         <Trash2 className="h-3.5 w-3.5" />
+                                     </Button>
+                                   </>
+                                 )}
+                                 <Button variant="ghost" size="sm" className="h-8 text-xs text-gray-600 flex items-center gap-1 bg-gray-50 hover:bg-gray-100 font-semibold px-2" onClick={() => setPreviewImage(rem.proofImageUrl)}>
+                                     <Eye className="h-3.5 w-3.5" /> Proof
+                                 </Button>
+                             </div>
                          </div>
                      </div>
                  ))}
                  {remittances.length === 0 && (
                      <div className="px-4 py-8 text-center text-sm text-muted-foreground bg-white rounded-lg border border-dashed">
-                         No remittances logged yet.
+                         No money transfers logged yet.
                      </div>
                  )}
              </div>
           </CardContent>
        </Card>
+      </TabsContent>
+          )}
+
+      <TabsContent value="requests">
+         <div className="flex justify-between items-center mb-4">
+             <h2 className="text-lg font-bold">Manager Fund Requests</h2>
+             <Button className="bg-orange-600 hover:bg-orange-700" onClick={openNewRequestModal}>
+                <Plus className="mr-2 h-4 w-4" /> Request Funds
+             </Button>
+         </div>
+
+         <div className="grid gap-3">
+             {requests.map((req: any) => (
+                 <Card key={req._id} className="p-4 shadow-sm">
+                     <div className="flex justify-between items-start">
+                         <div>
+                             <div className="flex items-center gap-2 mb-1">
+                                 <h3 className="font-bold text-gray-900 text-lg">{req.amountRUB.toLocaleString()} ₽</h3>
+                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${req.status === 'approved' ? 'bg-green-100 text-green-700' : req.status === 'rejected' ? 'bg-red-100 text-red-700' : req.status === 'fulfilled' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                                     {req.status}
+                                 </span>
+                             </div>
+                             <p className="text-sm font-medium text-gray-700">{req.purpose}</p>
+                             {req.notes && <p className="text-xs text-muted-foreground mt-1">"{req.notes}"</p>}
+                             <p className="text-[10px] text-muted-foreground mt-2">Requested by {req.requestedBy} on {format(new Date(req.dateRequested), 'dd MMM yyyy')}</p>
+                         </div>
+                         
+                         {role === 'admin' && req.status === 'pending' && (
+                             <div className="flex flex-col gap-2">
+                                 <Button size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700" onClick={() => updateRequestStatus(req._id, 'approved')}>Approve</Button>
+                                 <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-600 hover:bg-red-50" onClick={() => updateRequestStatus(req._id, 'rejected')}>Reject</Button>
+                             </div>
+                         )}
+                         {role === 'admin' && req.status === 'approved' && (
+                             <Button size="sm" className="h-7 text-xs bg-blue-600 hover:bg-blue-700" onClick={() => updateRequestStatus(req._id, 'fulfilled')}>Mark Fulfilled</Button>
+                         )}
+                     </div>
+                 </Card>
+             ))}
+             {requests.length === 0 && (
+                 <div className="px-4 py-8 text-center text-sm text-muted-foreground bg-white rounded-lg border border-dashed">
+                     No fund requests found.
+                 </div>
+             )}
+         </div>
+      </TabsContent>
+    </Tabs>
 
        {/* Add Modal */}
        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
           <DialogContent className="sm:max-w-[425px]">
              <DialogHeader>
-                 <DialogTitle>Log New Remittance</DialogTitle>
+                 <DialogTitle>{editingId ? 'Edit Transfer' : 'Log New Transfer'}</DialogTitle>
                  <DialogDescription>Record money sent to Russia.</DialogDescription>
              </DialogHeader>
              <form onSubmit={handleSubmit} className="space-y-4 py-2">
@@ -275,7 +467,7 @@ export default function RemittanceManager({ initialRemittances }: { initialRemit
 
                 <DialogFooter className="pt-2">
                    <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                   <Button type="submit" disabled={loading} className="bg-orange-600 hover:bg-orange-700">Save Transfer</Button>
+                   <Button type="submit" disabled={loading} className="bg-orange-600 hover:bg-orange-700">{editingId ? 'Update Transfer' : 'Save Transfer'}</Button>
                 </DialogFooter>
              </form>
           </DialogContent>
@@ -291,6 +483,34 @@ export default function RemittanceManager({ initialRemittances }: { initialRemit
                    {previewImage && <img src={previewImage} alt="Proof" className="max-h-[70vh] object-contain" />}
                </div>
            </DialogContent>
+       </Dialog>
+
+       {/* Request Funds Modal */}
+       <Dialog open={isRequestModalOpen} onOpenChange={setIsRequestModalOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+             <DialogHeader>
+                 <DialogTitle>Request Funds</DialogTitle>
+                 <DialogDescription>Ask Admin to send money for operations.</DialogDescription>
+             </DialogHeader>
+             <form onSubmit={submitFundRequest} className="space-y-4 py-2">
+                <div className="space-y-1">
+                    <label className="text-xs font-semibold text-gray-700 uppercase">Amount Needed (RUB)</label>
+                    <input className="flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm shadow-sm" type="number" value={requestForm.amountRUB} onChange={e => setRequestForm({...requestForm, amountRUB: e.target.value})} placeholder="e.g. 150000" required />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-xs font-semibold text-gray-700 uppercase">Purpose</label>
+                    <input className="flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm shadow-sm" value={requestForm.purpose} onChange={e => setRequestForm({...requestForm, purpose: e.target.value})} placeholder="e.g. Next Month Rent + Staff Setup" required />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-xs font-semibold text-gray-700 uppercase">Additional Notes</label>
+                    <textarea className="flex w-full rounded-md border border-input px-3 py-2 text-sm shadow-sm" rows={3} value={requestForm.notes} onChange={e => setRequestForm({...requestForm, notes: e.target.value})} placeholder="Provide breakdown if needed..." />
+                </div>
+                <DialogFooter className="pt-2">
+                   <Button type="button" variant="outline" onClick={() => setIsRequestModalOpen(false)}>Cancel</Button>
+                   <Button type="submit" disabled={loading} className="bg-orange-600 hover:bg-orange-700">Submit Request</Button>
+                </DialogFooter>
+             </form>
+          </DialogContent>
        </Dialog>
     </div>
   );

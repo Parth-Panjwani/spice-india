@@ -43,3 +43,18 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     return NextResponse.json({ error: 'Failed to update ledger' }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request, context: { params: Promise<{ id: string }> }) {
+  await connectToDatabase();
+  try {
+    const { id } = await context.params;
+    const deleted = await StaffLedger.findByIdAndDelete(id);
+    if (!deleted) {
+      return NextResponse.json({ error: 'Staff not found' }, { status: 404 });
+    }
+    return NextResponse.json({ message: 'Deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting staff:', error);
+    return NextResponse.json({ error: 'Failed to delete staff' }, { status: 500 });
+  }
+}

@@ -16,7 +16,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     return NextResponse.json(updated);
   } catch (error) {
     console.error('Error updating remittance:', error);
-    return NextResponse.json({ error: 'Failed to update remittance' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update' }, { status: 500 });
   }
 }
 
@@ -31,6 +31,6 @@ export async function DELETE(req: Request, context: { params: Promise<{ id: stri
     return NextResponse.json({ message: 'Deleted successfully' });
   } catch (error) {
     console.error('Error deleting remittance:', error);
-    return NextResponse.json({ error: 'Failed to delete remittance' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to delete' }, { status: 500 });
   }
 }

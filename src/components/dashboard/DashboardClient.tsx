@@ -15,8 +15,10 @@ import {
 } from "lucide-react";
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function DashboardClient() {
+  const { role } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
@@ -91,7 +93,77 @@ export default function DashboardClient() {
       return <div className="p-8 text-center text-red-500">Dashboard data is malformed. Please check the server logs.</div>;
   }
 
+  if (role === 'cook') {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+        <div className="h-16 w-16 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mb-4">
+          <ShoppingBag className="h-8 w-8" />
+        </div>
+        <h2 className="text-2xl font-bold tracking-tight text-gray-900">Welcome to Kitchen Operations</h2>
+        <p className="text-muted-foreground mt-2 max-w-sm">Please use the sidebar menu to access the Inventory, submit Item Requests, or check your Pay.</p>
+      </div>
+    );
+  }
+
   const { kpis, metrics, alerts, recentActivity } = data;
+
+  const totalManagerExpense = (kpis.totalGroceryPurchasesRUB || 0) + (kpis.totalSalaryPaidRUB || 0);
+  const managerRemainingBalance = (kpis.totalRemittanceRecvRUB || 0) - totalManagerExpense;
+
+  if (role === 'manager') {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-1">
+           <h2 className="text-xl md:text-2xl font-bold tracking-tight text-gray-900">Manager Overview</h2>
+           <p className="text-sm text-muted-foreground mt-0.5">Quick snapshot of operations and funds.</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="shadow-sm border-0 ring-1 ring-black/5 bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Total Money From India</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{kpis.totalRemittanceRecvRUB.toLocaleString()} RUB</div>
+              <p className="text-xs text-muted-foreground mt-1">Confirmed Remittances</p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm border-0 ring-1 ring-black/5 bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Total Operational Expense</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">-{totalManagerExpense.toLocaleString()} RUB</div>
+              <p className="text-xs text-muted-foreground mt-1">Groceries + Staff Salaries Paid</p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm border-0 ring-1 ring-black/5 bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Remaining Balance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{managerRemainingBalance.toLocaleString()} RUB</div>
+              <p className="text-xs text-muted-foreground mt-1">Estimated unspent cash</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-8">
+          <Card className="shadow-sm border-0 ring-1 ring-black/5 bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-2"><Users className="h-4 w-4 text-orange-600" /> Active Operations Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+               <div className="text-lg font-bold text-gray-900">{kpis.activeMealStudents} Students</div>
+               <p className="text-xs text-muted-foreground mt-1">Currently enrolled in meal contracts.</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -140,7 +212,7 @@ export default function DashboardClient() {
 
         <Card className="shadow-sm border-0 ring-1 ring-black/5 bg-white">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Remitted</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Money Sent to Russia</CardTitle>
             <Send className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
@@ -188,7 +260,7 @@ export default function DashboardClient() {
 
         <Card className={`shadow-sm border-0 ring-1 ring-black/5 ${metrics.procurementGapRUB > 50000 ? 'bg-orange-50' : (metrics.procurementGapRUB < 0 ? 'bg-red-50' : 'bg-white')}`}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Procurement Gap</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Missing Invoices</CardTitle>
             <AlertTriangle className={`h-4 w-4 ${metrics.procurementGapRUB < 0 ? 'text-red-500' : 'text-orange-500'}`} />
           </CardHeader>
           <CardContent>

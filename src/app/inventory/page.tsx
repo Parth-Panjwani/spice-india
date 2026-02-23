@@ -1,5 +1,6 @@
 import connectToDatabase from '@/lib/db';
 import { InventoryItem, InventoryPurchase, InventoryConsumption } from '@/models/Inventory';
+import InventoryRequest from '@/models/InventoryRequest';
 import Remittance from '@/models/Remittance';
 import InventoryManager from '@/components/inventory/InventoryManager';
 
@@ -14,12 +15,16 @@ export default async function InventoryPage() {
       .populate('itemRef', 'name unit')
       .populate('linkedRemittance', 'date amountRUB')
       .sort({ date: -1 })
+      .limit(100)
       .lean();
 
   const consumptions = await InventoryConsumption.find({})
       .populate('itemRef', 'name unit')
       .sort({ date: -1 })
+      .limit(100)
       .lean();
+
+  const requests = await InventoryRequest.find({}).sort({ dateRequested: -1 }).limit(100).lean();
 
   const activeRemittances = await Remittance.find({ status: 'confirmed' }).sort({ date: -1 }).lean();
 
@@ -46,6 +51,7 @@ export default async function InventoryPage() {
          initialPurchases={serialize(purchases)}
          initialConsumptions={serialize(consumptions)}
          remittances={serialize(activeRemittances)}
+         initialRequests={serialize(requests)}
       />
     </main>
   );

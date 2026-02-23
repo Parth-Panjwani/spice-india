@@ -1,17 +1,31 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Users, Wallet, CreditCard } from 'lucide-react';
+import { Plus, Users, Wallet, CreditCard, Edit, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function StaffManager({ initialLedgers }: any) {
-  const [ledgers, setLedgers] = useState(initialLedgers);
+  const { role } = useAuth();
+  const [ledgers, setLedgers] = useState([]);
+
+  useEffect(() => {
+    let filtered = initialLedgers || [];
+    if (role === 'manager') {
+       filtered = filtered.filter((l: any) => !l.staffName.toLowerCase().includes('manager'));
+    } else if (role === 'cook') {
+       filtered = filtered.filter((l: any) => l.staffName.toLowerCase().includes('cook'));
+    }
+    setLedgers(filtered);
+  }, [initialLedgers, role]);
+
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [selectedLedger, setSelectedLedger] = useState<any>(null);
+  const [editingLedgerId, setEditingLedgerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const [form, setForm] = useState({ staffName: '', monthlySalaryRUB: '', setupCostOwedRUB: '' });
@@ -22,22 +36,49 @@ export default function StaffManager({ initialLedgers }: any) {
     setExpandedHistory(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const openNew = () => {
+    setEditingLedgerId(null);
+    setForm({ staffName: '', monthlySalaryRUB: '', setupCostOwedRUB: '' });
+    setIsNewModalOpen(true);
+  };
+
+  const openEdit = (l: any) => {
+    setEditingLedgerId(l._id);
+    setForm({
+        staffName: l.staffName,
+        monthlySalaryRUB: l.monthlySalaryRUB.toString(),
+        setupCostOwedRUB: l.setupCostOwedRUB ? l.setupCostOwedRUB.toString() : ''
+    });
+    setIsNewModalOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if(!confirm("Are you sure you want to delete this staff member and all their ledger history?")) return;
+    try {
+        const res = await fetch(`/api/staff/${id}`, { method: 'DELETE' });
+        if(res.ok) {
+            setLedgers(ledgers.filter((l: any) => l._id !== id));
+            router.refresh();
+        }
+    } catch(err) { console.error(err); }
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('/api/staff', { 
-        method: 'POST', 
-        body: JSON.stringify({
+      const url = editingLedgerId ? `/api/staff/${editingLedgerId}` : '/api/staff';
+      const method = editingLedgerId ? 'PUT' : 'POST';
+      const payload = {
            staffName: form.staffName,
            monthlySalaryRUB: Number(form.monthlySalaryRUB),
-           setupCostOwedRUB: form.setupCostOwedRUB ? Number(form.setupCostOwedRUB) : 0
-        }) 
-      });
+           ...(form.setupCostOwedRUB && { setupCostOwedRUB: Number(form.setupCostOwedRUB) })
+      };
+
+      const res = await fetch(url, { method, body: JSON.stringify(payload) });
       if (res.ok) {
         setIsNewModalOpen(false);
         router.refresh();
-        window.location.reload();
       }
     } finally { setLoading(false); }
   };
@@ -58,7 +99,7 @@ export default function StaffManager({ initialLedgers }: any) {
       if (res.ok) {
          setIsUpdateModalOpen(false);
          setUpdateForm({ addSalaryPaidTUB: '', addAdvanceRUB: '', addSetupCostPaidRUB: '', note: '' });
-         window.location.reload();
+         router.refresh();
       }
     } finally { setLoading(false); }
   };
@@ -70,7 +111,7 @@ export default function StaffManager({ initialLedgers }: any) {
 
   return (
     <div className="space-y-6">
-       <div className="flex justify-between items-center">
+       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
            <div className="flex gap-4">
               <Card className="px-4 py-2 bg-white shadow-sm flex items-center gap-3">
                  <div className="bg-blue-100 p-2 rounded-full text-blue-600"><Users className="h-4 w-4" /></div>
@@ -81,10 +122,17 @@ export default function StaffManager({ initialLedgers }: any) {
               </Card>
            </div>
            
-           <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => setIsNewModalOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" /> Add Staff Member
-           </Button>
+           <div className="flex items-center justify-between w-full sm:w-auto">
+               <h2 className="text-lg font-bold sm:hidden">Staff Ledgers</h2>
+               {role === 'admin' && (
+                 <Button className="bg-blue-600 hover:bg-blue-700" onClick={openNew}>
+                    <Plus className="mr-2 h-4 w-4" /> Add Staff Member
+                 </Button>
+               )}
+           </div>
        </div>
+
+       <h2 className="text-lg font-bold hidden sm:block mt-2">Staff Ledgers</h2>
 
        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
            {ledgers.map((l: any) => {
@@ -95,9 +143,21 @@ export default function StaffManager({ initialLedgers }: any) {
                   <Card key={l._id} className="shadow-sm border-0 ring-1 ring-black/5 bg-white relative overflow-hidden">
                       <div className={`absolute left-0 top-0 h-full w-1.5 ${balance > 0 ? 'bg-red-400' : 'bg-green-400'}`} />
                       <CardContent className="p-5 pl-6">
-                          <h3 className="font-bold text-lg text-gray-900 flex justify-between items-center">
+                          <h3 className="font-bold text-lg text-gray-900 flex justify-between items-center group">
                              {l.staffName}
-                             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openUpdate(l)}>Update Pay</Button>
+                             {role === 'admin' && (
+                               <div className="flex items-center gap-1">
+                                   <Button variant="ghost" size="icon" className="h-7 w-7 text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => openEdit(l)}>
+                                       <Edit className="h-3.5 w-3.5" />
+                                   </Button>
+                                   <Button variant="ghost" size="icon" className="h-7 w-7 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleDelete(l._id)}>
+                                       <Trash2 className="h-3.5 w-3.5" />
+                                   </Button>
+                               </div>
+                             )}
+                             {role !== 'cook' && (
+                                <Button size="sm" variant="outline" className="h-7 text-xs ml-1 bg-white hover:bg-gray-50" onClick={() => openUpdate(l)}>Update Pay</Button>
+                             )}
                           </h3>
                           
                           <div className="mt-4 space-y-2 text-sm">
@@ -185,16 +245,17 @@ export default function StaffManager({ initialLedgers }: any) {
 
        <Dialog open={isNewModalOpen} onOpenChange={setIsNewModalOpen}>
           <DialogContent>
-             <DialogHeader><DialogTitle>Add New Staff Ledger</DialogTitle></DialogHeader>
+             <DialogHeader><DialogTitle>{editingLedgerId ? 'Edit Staff Profile' : 'Add New Staff Ledger'}</DialogTitle></DialogHeader>
              <form onSubmit={handleCreate} className="space-y-4 pt-2">
                 <input className="flex h-9 w-full rounded-md border text-sm px-3" placeholder="Staff Name" value={form.staffName} onChange={e => setForm({...form, staffName: e.target.value})} required/>
                 <input className="flex h-9 w-full rounded-md border text-sm px-3" type="number" placeholder="Monthly Salary (RUB)" value={form.monthlySalaryRUB} onChange={e => setForm({...form, monthlySalaryRUB: e.target.value})} required/>
                 <div className="p-3 bg-gray-50 rounded border border-gray-100">
                     <label className="text-xs font-semibold text-gray-700 block mb-1">Upfront Visa & Ticket Cost (RUB)</label>
                     <p className="text-[10px] text-muted-foreground mb-2">If you paid for their setup, enter it here. This debt will be tracked and you can recover it from their salary later.</p>
-                    <input className="flex h-9 w-full rounded-md border text-sm px-3 bg-white" type="number" placeholder="e.g. 85000" value={form.setupCostOwedRUB} onChange={e => setForm({...form, setupCostOwedRUB: e.target.value})} />
+                    <input className="flex h-9 w-full rounded-md border text-sm px-3 bg-white" type="number" placeholder="e.g. 85000" value={form.setupCostOwedRUB} onChange={e => setForm({...form, setupCostOwedRUB: e.target.value})} disabled={!!editingLedgerId} />
+                    {editingLedgerId && <p className="text-[10px] text-orange-600 mt-1">Setup Cost Owed cannot be edited once initialized. Delete and recreate if needed.</p>}
                 </div>
-                <Button type="submit" disabled={loading} className="w-full bg-blue-600">Create Ledger</Button>
+                <Button type="submit" disabled={loading} className="w-full bg-blue-600">{editingLedgerId ? 'Update Staff Member' : 'Create Ledger'}</Button>
              </form>
           </DialogContent>
        </Dialog>

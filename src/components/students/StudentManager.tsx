@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 // Badge removed as it is efficiently handled by custom styles
@@ -25,8 +25,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format, addMonths, isPast } from 'date-fns';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function StudentManager({ initialStudents }: { initialStudents: any[] }) {
+  const { role } = useAuth();
   const [students, setStudents] = useState(initialStudents);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('active');
@@ -36,6 +38,10 @@ export default function StudentManager({ initialStudents }: { initialStudents: a
   const [renewalMonths, setRenewalMonths] = useState(3);
   const [renewalMealType, setRenewalMealType] = useState('both');
   const router = useRouter();
+
+  useEffect(() => {
+    setStudents(initialStudents);
+  }, [initialStudents]);
 
   const filteredStudents = students.filter(s => {
     const matchesSearch = s.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -152,11 +158,13 @@ export default function StudentManager({ initialStudents }: { initialStudents: a
              onChange={(e) => setSearchTerm(e.target.value)}
            />
         </div>
-        <Link href="/students/create" className="w-full sm:w-auto">
-            <Button className="w-full sm:w-auto h-11 sm:h-10 bg-orange-600 hover:bg-orange-700 rounded-xl text-base sm:text-sm">
-            <Plus className="mr-2 h-5 w-5 sm:h-4 sm:w-4" /> New ID Card
-            </Button>
-        </Link>
+        {role === 'admin' && (
+          <Link href="/students/create" className="w-full sm:w-auto">
+              <Button className="w-full sm:w-auto h-11 sm:h-10 bg-orange-600 hover:bg-orange-700 rounded-xl text-base sm:text-sm">
+              <Plus className="mr-2 h-5 w-5 sm:h-4 sm:w-4" /> New ID Card
+              </Button>
+          </Link>
+        )}
       </div>
 
       {/* Mobile-optimized grid - single column on small screens */}
@@ -248,8 +256,8 @@ export default function StudentManager({ initialStudents }: { initialStudents: a
                     </CardContent>
                     
                     <div className="p-2 bg-gray-50/80 backdrop-blur-sm border-t border-gray-100 flex gap-2">
-                        {/* Renew Logic: Only show if Archived (Expired) */}
-                        {activeTab === 'archived' && (
+                        {/* Renew Logic: Only show if Archived (Expired) AND user is admin */}
+                        {activeTab === 'archived' && role === 'admin' && (
                           <Button 
                              className="flex-1 h-7 text-xs shadow-sm bg-orange-600 hover:bg-orange-700 text-white"
                              onClick={() => openRenewalModal(student)}
